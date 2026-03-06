@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Barrier Tracker</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.css" rel="stylesheet" />
+  <style>
+    body, html { margin:0; padding:0; height:100%; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    #map { width:100%; height:100%; }
+    .popup img { max-width:200px; display:block; margin-bottom:4px; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/maplibre-gl@5.19.0/dist/maplibre-gl.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+
+<script>
+(async function() {
+
+  // --- Initialisation MapLibre ---
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://demotiles.maplibre.org/style.json', // tuiles gratuites
+    center: [2.35, 48.85],
+    zoom: 5
+  });
+
+  // --- Charger GeoJSON léger (points) ---
+  const pointsRes = await fetch('data/points_light.json.gz');
+  const buf = await pointsRes.arrayBuffer();
+  const geojson = JSON.parse(pako.ungzip(new Uint8Array(buf), { to: 'string' }));
+
+  map.addSource('barriers', {
+    type: 'geojson',
+    data: geojson
+  });
+
+  // --- Ajouter layer WebGL pour points ---
+  map.addLayer({
+    id: 'points',
+    type: 'circle',
+    source: 'barriers',
+    paint: {
+      'circle-radius': 5,
+      'circle-color': [
+        'match',
+        ['get','t'], 
+        1, '#ff0000',   // type 1 = rouge
+        2, '#00aaff',   // type 2 = bleu
+        '#888888'       // défaut
+      ]
+    }
+  });
+
+  // --- Charger détails JSON ---
+  const detailsRes = await fetch('data/details.json');
+  const details = await detailsRes.json();
+
+  // --- Popup au clic ---
+  map.on('click', 'points', e => {
+    const id = e.features[0].properties.i;
+    const d = details[id];
+    if (!d) return;
+
+    new maplibregl.Popup({ offset: 10 })
+      .setLngLat(e.lngLat)
+      .setHTML(`<div class="popup"><img src="${d.photo}" /><strong>${d.name}</strong><br>${d.description || ''}</div>`)
+      .addTo(map);
+  });
+
+  // --- Curseur pointeur au survol ---
+  map.on('mouseenter', 'points', () => { map.getCanvas().style.cursor = 'pointer'; });
+  map.on('mouseleave', 'points', () => { map.getCanvas().style.cursor = ''; });
+
+})();
+</script>
+
+</body>
+</html>
